@@ -15,9 +15,10 @@ import (
 )
 
 // Command line defaults
+// We added the 127.0.0.1
 const (
-	DefaultHTTPAddr = ":11000"
-	DefaultRaftAddr = ":12000"
+	DefaultHTTPAddr = "127.0.0.1:11000"
+	DefaultRaftAddr = "127.0.0.1:12000"
 )
 
 // Command line parameters
@@ -34,7 +35,7 @@ func init() {
 	flag.StringVar(&joinAddr, "join", "", "Set join address, if any")
 	flag.StringVar(&nodeID, "id", "", "Node ID")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path> \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <data-path> \n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
@@ -43,20 +44,21 @@ func main() {
 	flag.Parse()
 
 	if flag.NArg() == 0 {
-		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
+		fmt.Fprintf(os.Stderr, "No storage directory specified\n")
 		os.Exit(1)
 	}
 
-	// Ensure Raft storage exists.
-	raftDir := flag.Arg(0)
-	if raftDir == "" {
-		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
+	// Ensure storage directory exists.
+	storageDir := flag.Arg(0)
+	if storageDir == "" {
+		fmt.Fprintf(os.Stderr, "Invalid input: \"\" as storage directory specified\n")
 		os.Exit(1)
 	}
-	os.MkdirAll(raftDir, 0700)
+	os.MkdirAll(storageDir, 0700)
 
 	s := store.New(inmem)
-	s.RaftDir = raftDir
+	s.RaftDir = storageDir
+	s.LeveldbDir = storageDir
 	s.RaftBind = raftAddr
 	if err := s.Open(joinAddr == "", nodeID); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())
@@ -74,12 +76,12 @@ func main() {
 		}
 	}
 
-	log.Println("hraftd started successfully")
+	log.Println("dleveldb started successfully")
 
 	terminate := make(chan os.Signal, 1)
 	signal.Notify(terminate, os.Interrupt)
 	<-terminate
-	log.Println("hraftd exiting")
+	log.Println("dleveldb exiting")
 }
 
 func join(joinAddr, raftAddr, nodeID string) error {

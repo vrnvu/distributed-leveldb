@@ -32,6 +32,9 @@ type Store struct {
 	RaftBind string
 	inmem    bool
 
+	LeveldbDir string
+
+	// TODO leveldb
 	mu sync.Mutex
 	m  map[string]string // The key-value store for the system.
 
@@ -58,7 +61,7 @@ func (s *Store) Open(enableSingle bool, localID string) error {
 	config.LocalID = raft.ServerID(localID)
 
 	// Setup Raft communication.
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1"+s.RaftBind)
+	addr, err := net.ResolveTCPAddr("tcp", s.RaftBind)
 	if err != nil {
 		return err
 	}
