@@ -8,12 +8,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/filter"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 const (
@@ -29,16 +31,14 @@ type command struct {
 
 // Store is a simple key-value store, where all changes are made via Raft consensus.
 type Store struct {
-	RaftDir  string
-	RaftBind string
-	inmem    bool
-
+	RaftDir    string
+	RaftBind   string
 	LeveldbDir string
+	inmem      bool
 
 	// TODO leveldb
-	mu sync.Mutex
-	m  map[string]string // The key-value store for the system.
-	db *leveldb.DB       // safe for concurrent use
+	db       *leveldb.DB // safe for concurrent use
+	snapshot map[string]string
 
 	raft *raft.Raft // The consensus mechanism
 
@@ -46,16 +46,21 @@ type Store struct {
 }
 
 // New returns a new Store.
-func New(inmem bool, storageDir string) (*Store, error) {
-	db, err := leveldb.OpenFile(storageDir, nil)
+func New(inmem bool, storageDir string, raftDir string, raftBind string) (*Store, error) {
+	o := &opt.Options{
+		Filter: filter.NewBloomFilter(10),
+	}
+	leveldbDir := storageDir + "/leveldb"
+	db, err := leveldb.OpenFile(leveldbDir, o)
 	if err != nil {
 		return nil, err
 	}
 	return &Store{
-		m:      make(map[string]string),
-		db:     db,
-		inmem:  inmem,
-		logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
+		db:       db,
+		inmem:    inmem,
+		logger:   log.New(os.Stderr, "[store] ", log.LstdFlags),
+		RaftDir:  raftDir,
+		RaftBind: raftBind,
 	}, nil
 }
 
@@ -123,9 +128,24 @@ func (s *Store) Open(enableSingle bool, localID string) error {
 
 // Get returns the value for the given key.
 func (s *Store) Get(key string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.m[key], nil
+	// this works with iter
+
+	iter := s.db.NewIterator(util.BytesPrefix([]byte(key)), nil)
+	defer iter.Release()
+	for iter.Next() {
+		k := string(iter.Key())
+		v := string(iter.Value())
+		if k == key {
+			return v, nil
+		}
+	}
+	return "", leveldb.ErrNotFound
+	// if err != nil {
+	// 	fmt.Println(err.Error())
+	// 	return "", err
+	// }
+	// value := string(data)
+	// return value, nil
 }
 
 // Set sets the value for the given key.
@@ -225,15 +245,16 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 
 // Snapshot returns a snapshot of the key-value store.
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	iter := f.db.NewIterator(nil, nil)
+	defer iter.Release()
 
-	// Clone the map.
 	o := make(map[string]string)
-	for k, v := range f.m {
-		o[k] = v
+	for iter.Next() {
+		key := string(iter.Key())
+		value := string(iter.Value())
+		o[key] = value
 	}
-	return &fsmSnapshot{store: o}, nil
+	return &fsmSnapshot{snapshot: o}, nil
 }
 
 // Restore stores the key-value store to a previous state.
@@ -245,32 +266,29 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 
 	// Set the state from the snapshot, no lock required according to
 	// Hashicorp docs.
-	f.m = o
+	f.snapshot = o
+	for key, value := range o {
+		f.db.Put([]byte(key), []byte(value), nil)
+	}
 	return nil
 }
 
 func (f *fsm) applySet(key, value string) interface{} {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.m[key] = value
-	return nil
+	return f.db.Put([]byte(key), []byte(value), nil)
 }
 
 func (f *fsm) applyDelete(key string) interface{} {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	delete(f.m, key)
-	return nil
+	return f.db.Delete([]byte(key), nil)
 }
 
 type fsmSnapshot struct {
-	store map[string]string
+	snapshot map[string]string
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	err := func() error {
 		// Encode data.
-		b, err := json.Marshal(f.store)
+		b, err := json.Marshal(f.snapshot)
 		if err != nil {
 			return err
 		}
