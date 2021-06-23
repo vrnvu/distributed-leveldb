@@ -56,10 +56,15 @@ func main() {
 	}
 	os.MkdirAll(storageDir, 0700)
 
-	s := store.New(inmem)
+	s, err := store.New(inmem, storageDir)
+	if err != nil {
+		log.Fatalf("failed to create a leveldb store at path %s: %s", storageDir, err.Error())
+	}
+
 	s.RaftDir = storageDir
 	s.LeveldbDir = storageDir
 	s.RaftBind = raftAddr
+
 	if err := s.Open(joinAddr == "", nodeID); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())
 	}

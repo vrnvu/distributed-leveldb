@@ -13,6 +13,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 const (
@@ -37,6 +38,7 @@ type Store struct {
 	// TODO leveldb
 	mu sync.Mutex
 	m  map[string]string // The key-value store for the system.
+	db *leveldb.DB       // safe for concurrent use
 
 	raft *raft.Raft // The consensus mechanism
 
@@ -44,12 +46,17 @@ type Store struct {
 }
 
 // New returns a new Store.
-func New(inmem bool) *Store {
+func New(inmem bool, storageDir string) (*Store, error) {
+	db, err := leveldb.OpenFile(storageDir, nil)
+	if err != nil {
+		return nil, err
+	}
 	return &Store{
 		m:      make(map[string]string),
+		db:     db,
 		inmem:  inmem,
 		logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
-	}
+	}, nil
 }
 
 // Open opens the store. If enableSingle is set, and there are no existing peers,

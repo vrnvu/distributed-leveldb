@@ -2,16 +2,23 @@ package store
 
 import (
 	"io/ioutil"
+	"log"
 	"os"
 	"testing"
 	"time"
 )
 
+var tempStorageDir = "store_test"
+
 // Test_StoreOpen tests that the store can be opened.
 func Test_StoreOpen(t *testing.T) {
-	s := New(false)
-	tmpDir, _ := ioutil.TempDir("", "store_test")
+	tmpDir, _ := ioutil.TempDir("", tempStorageDir)
 	defer os.RemoveAll(tmpDir)
+
+	s, err := New(false, tmpDir)
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+	}
 
 	s.RaftBind = "127.0.0.1:0"
 	s.RaftDir = tmpDir
@@ -26,9 +33,14 @@ func Test_StoreOpen(t *testing.T) {
 
 // Test_StoreOpenSingleNode tests that a command can be applied to the log
 func Test_StoreOpenSingleNode(t *testing.T) {
-	s := New(false)
-	tmpDir, _ := ioutil.TempDir("", "store_test")
+	tmpDir, _ := ioutil.TempDir("", tempStorageDir)
 	defer os.RemoveAll(tmpDir)
+
+	s, err := New(false, tmpDir)
+
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+	}
 
 	s.RaftBind = "127.0.0.1:0"
 	s.RaftDir = tmpDir
@@ -75,9 +87,13 @@ func Test_StoreOpenSingleNode(t *testing.T) {
 // Test_StoreInMemOpenSingleNode tests that a command can be applied to the log
 // stored in RAM.
 func Test_StoreInMemOpenSingleNode(t *testing.T) {
-	s := New(true)
-	tmpDir, _ := ioutil.TempDir("", "store_test")
+	tmpDir, _ := ioutil.TempDir("", tempStorageDir)
 	defer os.RemoveAll(tmpDir)
+
+	s, err := New(true, tmpDir)
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+	}
 
 	s.RaftBind = "127.0.0.1:0"
 	s.RaftDir = tmpDir
