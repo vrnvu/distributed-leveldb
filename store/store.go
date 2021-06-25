@@ -274,10 +274,12 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 }
 
 func (f *fsm) applySet(key, value string) interface{} {
+	f.logger.Println(f.RaftDir, key, value)
 	return f.db.Put([]byte(key), []byte(value), nil)
 }
 
 func (f *fsm) applyDelete(key string) interface{} {
+	f.logger.Println(f.RaftDir, key)
 	return f.db.Delete([]byte(key), nil)
 }
 
