@@ -267,9 +267,9 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 	// Set the state from the snapshot, no lock required according to
 	// Hashicorp docs.
 	f.snapshot = o
-	for key, value := range o {
-		f.db.Put([]byte(key), []byte(value), nil)
-	}
+	// for key, value := range o {
+	// 	f.db.Put([]byte(key), []byte(value), nil)
+	// }
 	return nil
 }
 
